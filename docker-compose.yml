@@ -1,0 +1,22 @@
+version: '3'
+services:
+  server:
+    image: cosmtrek/air
+    working_dir: /joint
+    ports:
+      - 8080:8080
+    environment:
+      - ENV="development"
+      - POSTGRES_URI=":5432"
+      - WEBHOOK_URI="http://localhost:8000"
+      - REDIRECT_URI="http://localhost:8000/oauth-page.html"
+    volumes:
+      - .:/joint/
+  db:
+    image: postgres:latest
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_USER=dev
+      - POSTGRES_PASS=dev
+      - POSTGRES_DB=dev
