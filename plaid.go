@@ -20,7 +20,7 @@ var (
 
 func createLinkToken(c *gin.Context) {
 	req := plaid.NewLinkTokenCreateRequest(
-		"Plaid Test App",
+		os.Getenv("PLAID_CLIENT_NAME"),
 		"en",
 		[]plaid.CountryCode{plaid.COUNTRYCODE_CA},
 		*plaid.NewLinkTokenCreateRequestUser("user_good"),

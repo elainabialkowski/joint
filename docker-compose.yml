@@ -7,6 +7,7 @@ services:
       - 8080:8080
     environment:
       - ENV="development"
+      - PLAID_CLIENT_NAME="test"
       - POSTGRES_URI=":5432"
       - WEBHOOK_URI="http://localhost:8000"
       - REDIRECT_URI="http://localhost:8000/oauth-page.html"
