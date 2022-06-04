@@ -18,8 +18,6 @@ func main() {
 	defer db.Close(context.Background())
 
 	r := gin.Default()
-	r.POST("/plaid/link/token", createLinkToken)
-	r.GET("/plaid/access/token", getAccessToken)
 	r.Run()
 
 }

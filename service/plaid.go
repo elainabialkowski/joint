@@ -1,39 +1,49 @@
-package main
+package service
 
 import (
 	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
-	"github.com/plaid/plaid-go/v3/plaid"
+	"github.com/plaid/plaid-go/plaid"
 )
 
-var (
-	plaidconfig = &plaid.Configuration{
-		DefaultHeader: map[string]string{
-			"PLAID-CLIENT-ID": os.Getenv("PLAID_CLIENT_ID"),
-			"PLAID-SECRET":    os.Getenv("PLAID_CLIENT_SECRET"),
-		},
+type PlaidService struct {
+	*Server
+	client *plaid.APIClient
+}
+
+func (PlaidService) Initialize(server *Server) PlaidService {
+	return PlaidService{
+		Server: server,
+		client: plaid.NewAPIClient(&plaid.Configuration{
+			DefaultHeader: map[string]string{
+				"PLAID-CLIENT-ID": os.Getenv("PLAID_CLIENT_ID"),
+				"PLAID-SECRET":    os.Getenv("PLAID_CLIENT_SECRET"),
+			},
+		}),
 	}
-	plaidclient = plaid.NewAPIClient(plaidconfig)
-)
+}
 
-func createLinkToken(c *gin.Context) {
+func (srv *PlaidService) CreateLinkToken(c *gin.Context) {
+
+	uuid := c.GetString("user_id")
 	req := plaid.NewLinkTokenCreateRequest(
 		os.Getenv("PLAID_CLIENT_NAME"),
 		"en",
 		[]plaid.CountryCode{plaid.COUNTRYCODE_CA},
-		*plaid.NewLinkTokenCreateRequestUser("user_good"),
+		*plaid.NewLinkTokenCreateRequestUser(uuid),
 	)
 	req.SetWebhook(os.Getenv("WEBHOOK_URI"))
 	req.SetRedirectUri(os.Getenv("REDIRECT_URI"))
 	req.SetProducts([]plaid.Products{plaid.PRODUCTS_AUTH})
 
-	resp, _, err := plaidclient.PlaidApi.LinkTokenCreate(c).Execute()
+	resp, _, err := srv.client.PlaidApi.LinkTokenCreate(c).Execute()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"err": err.Error(),
 		})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -41,11 +51,11 @@ func createLinkToken(c *gin.Context) {
 	})
 }
 
-func getAccessToken(c *gin.Context) {
+func (srv *PlaidService) GetAccessToken(c *gin.Context) {
 	publicToken := c.PostForm("public_token")
 
 	req := plaid.NewItemPublicTokenExchangeRequest(publicToken)
-	resp, _, err := plaidclient.PlaidApi.
+	resp, _, err := srv.client.PlaidApi.
 		ItemPublicTokenExchange(c).
 		ItemPublicTokenExchangeRequest(
 			*req,
@@ -55,6 +65,7 @@ func getAccessToken(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"err": err.Error(),
 		})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
