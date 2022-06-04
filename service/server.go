@@ -20,6 +20,7 @@ type Server struct {
 	Db       *sqlx.DB
 	Cache    *redis.Pool
 	Sessions *redis.Pool
+	Log      *log.Logger
 }
 
 func (srv Server) Run() error {
@@ -27,7 +28,13 @@ func (srv Server) Run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	err := srv.Connect()
+	file, err := os.Open("/sys/log")
+	if err != nil {
+		return err
+	}
+	srv.Log.SetOutput(file)
+
+	err = srv.Connect()
 	if err != nil {
 		return err
 	}
