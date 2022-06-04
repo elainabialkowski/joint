@@ -33,6 +33,7 @@ func (srv Server) Run() error {
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 	srv.Log.SetOutput(file)
 
 	err = srv.Connect()
