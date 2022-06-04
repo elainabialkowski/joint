@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -28,7 +29,7 @@ func (srv Server) Run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	file, err := os.Open("/sys/log")
+	file, err := os.OpenFile("/.log", 0755, fs.FileMode(os.O_CREATE))
 	if err != nil {
 		return err
 	}
