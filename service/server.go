@@ -2,7 +2,11 @@ package service
 
 import (
 	"context"
+	"log"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,6 +16,7 @@ import (
 )
 
 type Server struct {
+	*http.Server
 	Db       *sqlx.DB
 	Cache    *redis.Pool
 	Sessions *redis.Pool
@@ -19,12 +24,54 @@ type Server struct {
 
 func (srv Server) Run() error {
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	err := srv.Connect()
+	if err != nil {
+		return err
+	}
+
+	plaidService := PlaidService{}.Initialize(&srv)
+	userService := UserService{}.Initialize(&srv)
+
+	router := gin.Default()
+	router.POST("/plaid/link/token", plaidService.CreateLinkToken)
+	router.GET("/plaid/access/token", plaidService.GetAccessToken)
+	router.GET("/user/:id", userService.GetUser)
+
+	srv.Server = &http.Server{
+		Addr:    os.Getenv("PORT"),
+		Handler: router,
+	}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("could not start listener: %s\n", err)
+		}
+	}()
+
+	<-ctx.Done()
+	stop()
+	log.Println("shutting down gracefully, press Ctrl+C again to force")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatal("server forced to shutdown: ", err)
+		return err
+	}
+
+	log.Println("goodbye! <3")
+
+	return nil
+}
+
+func (srv *Server) Connect() error {
 	var err error
 	srv.Db, err = sqlx.Open("pgx", os.Getenv("PG_URI"))
 	if err != nil {
 		return err
 	}
-	defer srv.Db.Close()
 
 	srv.Cache = &redis.Pool{
 		MaxIdle:     10,
@@ -65,18 +112,6 @@ func (srv Server) Run() error {
 			return c, nil
 		},
 	}
-
-	plaidService := PlaidService{}.Initialize(&srv)
-	userService := UserService{}.Initialize(&srv)
-
-	router := gin.Default()
-
-	router.POST("/plaid/link/token", plaidService.CreateLinkToken)
-	router.GET("/plaid/access/token", plaidService.GetAccessToken)
-
-	router.GET("/user/:id", userService.GetUser)
-
-	router.Run(os.Getenv("PORT"))
 
 	return nil
 }
