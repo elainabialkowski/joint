@@ -6,11 +6,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gomodule/redigo/redis"
-	"github.com/jackc/pgx/v5"
+	_ "github.com/jackc/pgx/v5"
+	"github.com/jmoiron/sqlx"
 )
 
 type Server struct {
-	Db       *pgx.Conn
+	Db       *sqlx.DB
 	Cache    *redis.Conn
 	Sessions *redis.Conn
 }
@@ -18,7 +19,7 @@ type Server struct {
 func (srv Server) Run() error {
 
 	var err error
-	srv.Db, err = pgx.Connect(context.TODO(), os.Getenv("PG_URI"))
+	srv.Db, err = sqlx.Open("pgx", os.Getenv("PG_URI"))
 	if err != nil {
 		return err
 	}

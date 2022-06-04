@@ -11,6 +11,14 @@ type UserService struct {
 }
 
 type User struct {
+	Id        string
+	FirstName string
+	LastName  string
+
+	HouseholdId uint64
+	Accounts    []uint64
+
+	MonthlyIncome float64
 }
 
 func (UserService) Initialize(server *Server) UserService {
@@ -20,7 +28,7 @@ func (UserService) Initialize(server *Server) UserService {
 }
 
 func (srv UserService) GetUser(c *gin.Context) {
-	id := c.GetString("uuid")
+	id := c.GetString("id")
 	if id == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"err": "empty uuid",
@@ -28,4 +36,16 @@ func (srv UserService) GetUser(c *gin.Context) {
 		return
 	}
 
+	user := User{}
+	err := srv.Db.GetContext(c, &user, "SELECT * FROM user WHERE id=?", id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"err": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"user": user,
+	})
 }
