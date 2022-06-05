@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"io/fs"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -29,14 +29,7 @@ func (srv Server) Run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	file, err := os.OpenFile("/.log", 0755, fs.FileMode(os.O_CREATE))
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	srv.Log.SetOutput(file)
-
-	err = srv.Connect()
+	err := srv.Connect()
 	if err != nil {
 		return err
 	}
@@ -45,6 +38,22 @@ func (srv Server) Run() error {
 	userService := UserService{}.Initialize(&srv)
 
 	router := gin.Default()
+	router.Use(gin.Recovery())
+	router.Use(srv.GetSession())
+	router.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
+		return fmt.Sprintf("%s - [%s] \"%s %s %s %d %s \"%s\" %s\"\n",
+			param.ClientIP,
+			param.TimeStamp.Format(time.RFC1123),
+			param.Method,
+			param.Path,
+			param.Request.Proto,
+			param.StatusCode,
+			param.Latency,
+			param.Request.UserAgent(),
+			param.ErrorMessage,
+		)
+	}))
+
 	router.POST("/plaid/link/token", plaidService.CreateLinkToken)
 	router.GET("/plaid/access/token", plaidService.GetAccessToken)
 	router.GET("/user/:id", userService.GetUser)
@@ -65,9 +74,9 @@ func (srv Server) Run() error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatal("server forced to shutdown: ", err)
-		return err
 	}
 
 	log.Println("goodbye! <3")
@@ -125,4 +134,20 @@ func (srv *Server) Connect() error {
 	}
 
 	return nil
+}
+
+func (srv *Server) GetSession() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		authorization := ctx.GetHeader("authorization")
+		res, err := srv.Sessions.Get().Do("GET", authorization)
+		if err != nil {
+			ctx.JSON(http.StatusUnauthorized, gin.H{
+				"err": err.Error(),
+			})
+		}
+
+		srv.Sessions.Get().Do("EXPIRE", authorization, 3600)
+
+		ctx.Keys["user_id"] = res.(string)
+	}
 }
