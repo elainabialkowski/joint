@@ -84,6 +84,7 @@ func (srv *Server) Connect() error {
 
 	srv.Cache = &redis.Pool{
 		MaxIdle:     10,
+		Wait:        true,
 		IdleTimeout: 240 * time.Second,
 		DialContext: func(ctx context.Context) (redis.Conn, error) {
 			c, err := redis.Dial("tcp", os.Getenv("CACHE_URI"))
@@ -104,6 +105,7 @@ func (srv *Server) Connect() error {
 
 	srv.Sessions = &redis.Pool{
 		MaxIdle:     10,
+		Wait:        true,
 		IdleTimeout: 240 * time.Second,
 		DialContext: func(ctx context.Context) (redis.Conn, error) {
 			c, err := redis.Dial("tcp", os.Getenv("SESSIONS_URI"))
