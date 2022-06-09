@@ -10,7 +10,8 @@ import (
 
 type PlaidService struct {
 	*Server
-	client *plaid.APIClient
+	client   *plaid.APIClient
+	userRepo UserRepository
 }
 
 func (PlaidService) Initialize(server *Server) PlaidService {
@@ -22,6 +23,7 @@ func (PlaidService) Initialize(server *Server) PlaidService {
 				"PLAID-SECRET":    os.Getenv("PLAID_CLIENT_SECRET"),
 			},
 		}),
+		userRepo: UserRepository{}.Initialize(server.Db),
 	}
 }
 
@@ -40,9 +42,7 @@ func (srv *PlaidService) CreateLinkToken(c *gin.Context) {
 
 	resp, _, err := srv.client.PlaidApi.LinkTokenCreate(c).Execute()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"err": err.Error(),
-		})
+		c.JSON(http.StatusInternalServerError, gin.H{"err": err.Error()})
 		return
 	}
 
@@ -62,9 +62,7 @@ func (srv *PlaidService) GetAccessToken(c *gin.Context) {
 		).Execute()
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"err": err.Error(),
-		})
+		c.JSON(http.StatusInternalServerError, gin.H{"err": err.Error()})
 		return
 	}
 

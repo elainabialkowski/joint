@@ -12,13 +12,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gomodule/redigo/redis"
-	_ "github.com/jackc/pgx/v5"
-	"github.com/jmoiron/sqlx"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Server struct {
 	*http.Server
-	Db       *sqlx.DB
+	Db       *pgxpool.Pool
 	Cache    *redis.Pool
 	Sessions *redis.Pool
 	Log      *log.Logger
@@ -35,7 +34,6 @@ func (srv Server) Run() error {
 	}
 
 	plaidService := PlaidService{}.Initialize(&srv)
-	userService := UserService{}.Initialize(&srv)
 
 	router := gin.Default()
 	router.Use(gin.Recovery())
@@ -56,7 +54,6 @@ func (srv Server) Run() error {
 
 	router.POST("/plaid/link/token", plaidService.CreateLinkToken)
 	router.GET("/plaid/access/token", plaidService.GetAccessToken)
-	router.GET("/user/:id", userService.GetUser)
 
 	srv.Server = &http.Server{
 		Addr:    os.Getenv("PORT"),
@@ -86,7 +83,7 @@ func (srv Server) Run() error {
 
 func (srv *Server) Connect() error {
 	var err error
-	srv.Db, err = sqlx.Open("pgx", os.Getenv("PG_URI"))
+	srv.Db, err = pgxpool.Connect(context.Background(), os.Getenv("PG_URI"))
 	if err != nil {
 		return err
 	}

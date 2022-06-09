@@ -1,0 +1,13 @@
+DROP TABLE IF EXISTS joint.plan;
+
+DROP TABLE IF EXISTS joint.trans;
+
+DROP TABLE IF EXISTS joint.account;
+
+DROP TABLE IF EXISTS joint.goal;
+
+DROP TABLE IF EXISTS joint.user;
+
+DROP TABLE IF EXISTS joint.household;
+
+DROP DATABASE IF NOT EXISTS joint;
