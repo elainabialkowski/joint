@@ -50,12 +50,12 @@ func (repo UserRepository) Create(c context.Context, user User) (int, error) {
 
 type UserService struct {
 	*Server
-	repo UserRepository
+	userRepo UserRepository
 }
 
 func (UserService) Initialize(server *Server) UserService {
 	return UserService{
-		repo: UserRepository{}.Initialize(server.Db),
+		userRepo: UserRepository{}.Initialize(server.Db),
 	}
 }
 
@@ -66,7 +66,7 @@ func (srv UserService) Get(c *gin.Context) {
 		return
 	}
 
-	user, err := srv.repo.Get(c, id)
+	user, err := srv.userRepo.Get(c, id)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"err": err.Error()})
 		return
@@ -84,7 +84,7 @@ func (srv UserService) Create(c *gin.Context) {
 		return
 	}
 
-	id, err := srv.repo.Create(c, user)
+	id, err := srv.userRepo.Create(c, user)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"err": err.Error()})
 		return

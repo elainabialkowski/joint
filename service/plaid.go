@@ -29,12 +29,12 @@ func (PlaidService) Initialize(server *Server) PlaidService {
 
 func (srv *PlaidService) CreateLinkToken(c *gin.Context) {
 
-	uuid := c.GetString("user_id")
+	id := c.GetString("user_id")
 	req := plaid.NewLinkTokenCreateRequest(
 		os.Getenv("PLAID_CLIENT_NAME"),
 		"en",
 		[]plaid.CountryCode{plaid.COUNTRYCODE_CA},
-		*plaid.NewLinkTokenCreateRequestUser(uuid),
+		*plaid.NewLinkTokenCreateRequestUser(id),
 	)
 	req.SetWebhook(os.Getenv("WEBHOOK_URI"))
 	req.SetRedirectUri(os.Getenv("REDIRECT_URI"))
