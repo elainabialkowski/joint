@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -11,6 +13,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-migrate/migrate"
+	"github.com/golang-migrate/migrate/database/postgres"
 	"github.com/gomodule/redigo/redis"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -20,7 +24,6 @@ type Server struct {
 	Db       *pgxpool.Pool
 	Cache    *redis.Pool
 	Sessions *redis.Pool
-	Log      *log.Logger
 }
 
 func (srv Server) Run() error {
@@ -28,40 +31,29 @@ func (srv Server) Run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	err := srv.Connect()
+	err := srv.setupConnections()
 	if err != nil {
 		return err
 	}
 
-	plaidService := PlaidService{}.Initialize(&srv)
-
-	router := gin.Default()
-	router.Use(gin.Recovery())
-	router.Use(srv.GetSession())
-	router.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
-		return fmt.Sprintf("%s - [%s] \"%s %s %s %d %s \"%s\" %s\"\n",
-			param.ClientIP,
-			param.TimeStamp.Format(time.RFC1123),
-			param.Method,
-			param.Path,
-			param.Request.Proto,
-			param.StatusCode,
-			param.Latency,
-			param.Request.UserAgent(),
-			param.ErrorMessage,
-		)
-	}))
-
-	router.POST("/plaid/link/token", plaidService.CreateLinkToken)
-	router.GET("/plaid/access/token", plaidService.GetAccessToken)
-
-	srv.Server = &http.Server{
-		Addr:    os.Getenv("PORT"),
-		Handler: router,
+	err = srv.setupEngine()
+	if err != nil {
+		return err
 	}
+
+	err = srv.migrateUp()
+	if err != nil {
+		return err
+	}
+
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("could not start listener: %s\n", err)
+		} else if err != nil && err == http.ErrServerClosed {
+			srv.migrateDown()
+			srv.Db.Close()
+			srv.Cache.Close()
+			srv.Sessions.Close()
 		}
 	}()
 
@@ -81,7 +73,7 @@ func (srv Server) Run() error {
 	return nil
 }
 
-func (srv *Server) Connect() error {
+func (srv *Server) setupConnections() error {
 	var err error
 	srv.Db, err = pgxpool.Connect(context.Background(), os.Getenv("PG_URI"))
 	if err != nil {
@@ -108,6 +100,10 @@ func (srv *Server) Connect() error {
 			return c, nil
 		},
 	}
+	_, err = srv.Cache.Get().Do("PING")
+	if err != nil {
+		return err
+	}
 
 	srv.Sessions = &redis.Pool{
 		MaxIdle:     10,
@@ -129,11 +125,104 @@ func (srv *Server) Connect() error {
 			return c, nil
 		},
 	}
+	_, err = srv.Sessions.Get().Do("PING")
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
-func (srv *Server) GetSession() gin.HandlerFunc {
+func (srv *Server) setupEngine() error {
+	plaidService := PlaidService{}.Initialize(srv)
+
+	engine := gin.Default()
+	engine.Use(srv.session())
+	engine.Use(gin.Recovery())
+	engine.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
+		return fmt.Sprintf("%s - [%s] \"%s %s %s %d %s \"%s\" %s\"\n",
+			param.ClientIP,
+			param.TimeStamp.Format(time.RFC1123),
+			param.Method,
+			param.Path,
+			param.Request.Proto,
+			param.StatusCode,
+			param.Latency,
+			param.Request.UserAgent(),
+			param.ErrorMessage,
+		)
+	}))
+
+	engine.POST("/plaid/link/token", plaidService.CreateLinkToken)
+	engine.GET("/plaid/access/token", plaidService.GetAccessToken)
+
+	f, err := os.Create("server.log")
+	if err != nil {
+		return err
+	}
+
+	gin.DefaultWriter = io.MultiWriter(f, os.Stdout)
+
+	srv.Handler = engine
+
+	srv.Addr = os.Getenv("PORT")
+
+	return nil
+}
+
+func (srv *Server) migrateUp() error {
+	db, err := srv.Db.Acquire(context.Background())
+	if err != nil {
+		return err
+	}
+
+	driver, err := postgres.WithInstance((*sql.DB)(db.Conn()), &postgres.Config{})
+	if err != nil {
+		return err
+	}
+
+	m, err := migrate.NewWithDatabaseInstance(
+		"file:///migrations",
+		"postgres", driver)
+	if err != nil {
+		return err
+	}
+
+	err = m.Up()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (srv *Server) migrateDown() error {
+	db, err := srv.Db.Acquire(context.Background())
+	if err != nil {
+		return err
+	}
+
+	driver, err := postgres.WithInstance((*sql.DB)(db.Conn()), &postgres.Config{})
+	if err != nil {
+		return err
+	}
+
+	m, err := migrate.NewWithDatabaseInstance(
+		"file:///migrations",
+		"postgres", driver)
+	if err != nil {
+		return err
+	}
+
+	err = m.Down()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (srv *Server) session() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		authorization := ctx.GetHeader("authorization")
 		res, err := srv.Sessions.Get().Do("GET", authorization)
