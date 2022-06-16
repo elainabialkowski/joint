@@ -28,8 +28,8 @@ func (UserRepository) Initialize(db *pgxpool.Pool) UserRepository {
 
 func (repo UserRepository) Get(c context.Context, id int) (User, error) {
 	user := User{}
-	stmt := `select id, first_name, last_name, email, user_household 
-			from user 
+	stmt := `select id, first_name, last_name, email, users_households
+			from users
 			where id=$1`
 	err := repo.Db.QueryRow(c, stmt, id).Scan(&user.Id, &user.FirstName, &user.LastName, &user.Email, &user.Household)
 	if err != nil {
@@ -40,7 +40,7 @@ func (repo UserRepository) Get(c context.Context, id int) (User, error) {
 
 func (repo UserRepository) Create(c context.Context, user User) (int, error) {
 	var id int
-	stmt := `insert into user(first_name, last_name, email, user_household) values($1, $2, $3, $4) returning id`
+	stmt := `insert into users(first_name, last_name, email, users_households) values($1, $2, $3, $4) returning id`
 	err := repo.Db.QueryRow(c, stmt, user.FirstName, user.LastName, user.Email, user.Household).Scan(&id)
 	if err != nil {
 		return 0, err

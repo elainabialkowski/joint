@@ -55,7 +55,6 @@ func (srv Server) Run() error {
 			log.Println("Tearing down resources.")
 			srv.migrateDown()
 			srv.Db.Close()
-			srv.Cache.Close()
 			srv.Sessions.Close()
 		}
 	}()

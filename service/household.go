@@ -26,7 +26,7 @@ func (HouseholdRepository) Initialize(db *pgxpool.Pool) HouseholdRepository {
 func (repo HouseholdRepository) Get(c context.Context, id int) (Household, error) {
 	household := Household{}
 	stmt := `select id, title 
-			from household 
+			from households
 			where id=$1`
 	err := repo.Db.QueryRow(c, stmt, id).Scan(&household.Id, &household.Title)
 	if err != nil {
@@ -37,7 +37,7 @@ func (repo HouseholdRepository) Get(c context.Context, id int) (Household, error
 
 func (repo HouseholdRepository) Create(c context.Context, household Household) (int, error) {
 	var id int
-	stmt := `insert into household(title) values($1) returning id`
+	stmt := `insert into households(title) values($1) returning id`
 	err := repo.Db.QueryRow(c, stmt, household.Title).Scan(&id)
 	if err != nil {
 		return 0, err
