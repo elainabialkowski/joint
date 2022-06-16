@@ -1,50 +1,46 @@
-CREATE DATABASE IF NOT EXISTS joint;
-
-CREATE TYPE interval AS enum ('weekly', 'bi-weekly', 'monthly');
-
-CREATE TABLE IF NOT EXISTS joint.household (
+CREATE TABLE IF NOT EXISTS households (
     id SERIAL PRIMARY KEY,
     title TEXT
 );
 
-CREATE TABLE IF NOT EXISTS joint.user (
+CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     first_name TEXT,
     last_name TEXT,
     email TEXT UNIQUE,
-    user_household INT REFERENCES joint.household(id)
+    users_households SERIAL REFERENCES households(id)
 );
 
-CREATE TABLE IF NOT EXISTS joint.goal (
+CREATE TABLE IF NOT EXISTS goals (
     id SERIAL PRIMARY KEY,
     purpose TEXT,
     amount MONEY,
-    goal_household INT REFERENCES joint.household(id)
+    goals_households SERIAL REFERENCES households(id)
 );
 
-CREATE TABLE IF NOT EXISTS joint.account (
+CREATE TABLE IF NOT EXISTS accounts (
     id SERIAL PRIMARY KEY,
     title TEXT,
     institution INT,
-    account INT,
+    accounts INT,
     transit INT,
-    account_owner INT REFERENCES joint.user(id)
+    accounts_owner SERIAL REFERENCES users(id)
 );
 
-CREATE TABLE IF NOT EXISTS joint.trans (
+CREATE TABLE IF NOT EXISTS transactions (
     id SERIAL PRIMARY KEY,
     about TEXT,
     amount MONEY,
     source TEXT,
-    destination TEXT
-    trans_account INT REFERENCES joint.account(id)
+    destination TEXT,
+    transactions_accounts SERIAL REFERENCES accounts(id)
 );
 
-CREATE TABLE IF NOT EXISTS joint.plan (
+CREATE TABLE IF NOT EXISTS plans (
     id SERIAL PRIMARY KEY,
     title TEXT,
     about TEXT,
     due_date DATE,
-    end_goal MONEY,
-    plan_household INT REFERENCES joint.household(id)
+    end_goals MONEY,
+    plans_households SERIAL REFERENCES households(id)
 )

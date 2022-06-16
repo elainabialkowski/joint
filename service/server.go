@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -15,8 +15,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-migrate/migrate"
 	"github.com/golang-migrate/migrate/database/postgres"
+	_ "github.com/golang-migrate/migrate/source/file"
 	"github.com/gomodule/redigo/redis"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v4/pgxpool"
+	_ "github.com/jackc/pgx/v4/stdlib"
 )
 
 type Server struct {
@@ -50,6 +52,7 @@ func (srv Server) Run() error {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("could not start listener: %s\n", err)
 		} else if err != nil && err == http.ErrServerClosed {
+			log.Println("Tearing down resources.")
 			srv.migrateDown()
 			srv.Db.Close()
 			srv.Cache.Close()
@@ -75,34 +78,21 @@ func (srv Server) Run() error {
 
 func (srv *Server) setupConnections() error {
 	var err error
-	srv.Db, err = pgxpool.Connect(context.Background(), os.Getenv("PG_URI"))
-	if err != nil {
-		return err
-	}
-
-	srv.Cache = &redis.Pool{
-		MaxIdle:     10,
-		Wait:        true,
-		IdleTimeout: 240 * time.Second,
-		DialContext: func(ctx context.Context) (redis.Conn, error) {
-			c, err := redis.Dial("tcp", os.Getenv("CACHE_URI"))
-			if err != nil {
-				return nil, err
-			}
-			if _, err := c.Do("AUTH", os.Getenv("CACHE_PASSWORD")); err != nil {
-				c.Close()
-				return nil, err
-			}
-			if _, err := c.Do("SELECT", os.Getenv("CACHE_DB")); err != nil {
-				c.Close()
-				return nil, err
-			}
-			return c, nil
-		},
-	}
-	_, err = srv.Cache.Get().Do("PING")
-	if err != nil {
-		return err
+	ticker := time.NewTicker(2 * time.Second)
+	timeout, cancel := context.WithTimeout(context.Background(), time.Second*20)
+	for {
+		select {
+		case <-ticker.C:
+			srv.Db, err = pgxpool.Connect(context.Background(), os.Getenv("POSTGRES_URI"))
+		case <-timeout.Done():
+			cancel()
+			return errors.New("could not connect to postgres")
+		}
+		if err == nil {
+			log.Printf("Successfully connected to db!\n")
+			cancel()
+			break
+		}
 	}
 
 	srv.Sessions = &redis.Pool{
@@ -118,10 +108,6 @@ func (srv *Server) setupConnections() error {
 				c.Close()
 				return nil, err
 			}
-			if _, err := c.Do("SELECT", os.Getenv("SESSIONS_DB")); err != nil {
-				c.Close()
-				return nil, err
-			}
 			return c, nil
 		},
 	}
@@ -129,6 +115,7 @@ func (srv *Server) setupConnections() error {
 	if err != nil {
 		return err
 	}
+	log.Printf("Successfully connected to redis!\n")
 
 	return nil
 }
@@ -156,40 +143,38 @@ func (srv *Server) setupEngine() error {
 	engine.POST("/plaid/link/token", plaidService.CreateLinkToken)
 	engine.GET("/plaid/access/token", plaidService.GetAccessToken)
 
-	f, err := os.Create("server.log")
+	f, err := os.Create("/server.log")
 	if err != nil {
 		return err
 	}
 
 	gin.DefaultWriter = io.MultiWriter(f, os.Stdout)
 
-	srv.Handler = engine
-
-	srv.Addr = os.Getenv("PORT")
+	srv.Server = &http.Server{
+		Addr:    os.Getenv("PORT"),
+		Handler: engine,
+	}
 
 	return nil
 }
 
 func (srv *Server) migrateUp() error {
-	db, err := srv.Db.Acquire(context.Background())
+	p := &postgres.Postgres{}
+	d, err := p.Open(os.Getenv("POSTGRES_URI"))
 	if err != nil {
 		return err
 	}
-
-	driver, err := postgres.WithInstance((*sql.DB)(db.Conn()), &postgres.Config{})
-	if err != nil {
-		return err
-	}
+	defer d.Close()
 
 	m, err := migrate.NewWithDatabaseInstance(
-		"file:///migrations",
-		"postgres", driver)
+		"file:///app/migrations",
+		"dev", d)
 	if err != nil {
 		return err
 	}
 
 	err = m.Up()
-	if err != nil {
+	if err != nil && err != migrate.ErrNoChange {
 		return err
 	}
 
@@ -197,19 +182,16 @@ func (srv *Server) migrateUp() error {
 }
 
 func (srv *Server) migrateDown() error {
-	db, err := srv.Db.Acquire(context.Background())
+	p := &postgres.Postgres{}
+	d, err := p.Open(os.Getenv("POSTGRES_URI"))
 	if err != nil {
 		return err
 	}
-
-	driver, err := postgres.WithInstance((*sql.DB)(db.Conn()), &postgres.Config{})
-	if err != nil {
-		return err
-	}
+	defer d.Close()
 
 	m, err := migrate.NewWithDatabaseInstance(
-		"file:///migrations",
-		"postgres", driver)
+		"file:///app/migrations",
+		"dev", d)
 	if err != nil {
 		return err
 	}

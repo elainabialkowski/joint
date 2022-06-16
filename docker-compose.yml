@@ -1,35 +1,38 @@
 version: '3'
 services:
   server:
-    image: cosmtrek/air
-    working_dir: /joint
+    build: .
     ports:
       - 8080:8080
     environment:
-      - ENV="development"
-      - PLAID_CLIENT_NAME="test"
-      - POSTGRES_URI=":5432"
-      - WEBHOOK_URI="http://localhost:8000"
-      - REDIRECT_URI="http://localhost:8000/oauth-page.html"
-      - SESSIONS_PASS="dev"
-      - SESSIONS_URI="redis://localhost:6379"
-    volumes:
-      - .:/joint/
+      - PORT=:8080
+      - ENV=development
+      
+      - POSTGRES_URI=postgres://dev:dev@db:5432/joint?sslmode=disable
+     
+      - WEBHOOK_URI=http://localhost:8000
+      - REDIRECT_URI=http://localhost:8000/oauth-page.html
+      
+      - SESSIONS_URI=redis:6379
+      - SESSIONS_PASSWORD=dev
+      - SESSIONS_DB=dev
+    depends_on:
+      - db
+      - redis
+
   db:
     image: postgres:latest
     ports:
       - 5432:5432
     environment:
       - POSTGRES_USER=dev
-      - POSTGRES_PASS=dev
-      - POSTGRES_DB=dev
+      - POSTGRES_PASSWORD=dev
+      - POSTGRES_DB=joint
+
   redis:
     image: "redis:alpine"
     command: redis-server --requirepass dev
     ports:
       - 6379:6379
-    volumes:
-      - $PWD/redis-data:/var/lib/redis
-      - $PWD/redis.conf:/usr/local/etc/redis/redis.conf
     environment:
       - REDIS_REPLICATION_MODE=master

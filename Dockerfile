@@ -1,17 +1,16 @@
-FROM golang:alpine AS build
+FROM golang:alpine
 
-WORKDIR /build
+RUN apk add git
+
+WORKDIR /app
+
+COPY go.* ./
+RUN go mod download
 
 COPY . .
 
-RUN go mod download
-RUN go mod tidy
-RUN go test -race ./...
+RUN go build -o server /app/cmd/server/main.go
 
-RUN go build -o /build/server .
+EXPOSE 8080
 
-FROM scratch AS runner
-
-COPY --from=build /build/server /server
-
-ENTRYPOINT [ "/server" ]
+ENTRYPOINT [ "./server" ]
